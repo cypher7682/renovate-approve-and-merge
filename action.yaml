@@ -30,6 +30,9 @@ inputs:
     description: "Turns on literally all the logs. Useful for if you don't want to set DEBUG on env"
     required: false
     default: 0
+  installation_id:
+    description: "Installation ID for the GitHub app that provides the token"
+    required: true
 runs:
   using: 'docker'
   image: 'Dockerfile'
@@ -41,3 +44,4 @@ runs:
     - ${{ inputs.no_label }}
     - ${{ inputs.merge }}
     - ${{ inputs.debug }}
+    - ${{ inputs.installation_id }}

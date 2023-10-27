@@ -1,5 +1,4 @@
 import logging
-import os
 import re
 import sys
 import time
@@ -20,6 +19,7 @@ except IndexError:
     NO_LABEL = "rnvt-no-merge"
     MERGE = True
     DEBUG = False
+    INSTALLATION_ID = 32430040
 else:
     # We're not running locally
     GIT_TOKEN = sys.argv[1]
@@ -29,19 +29,22 @@ else:
     NO_LABEL = sys.argv[5]
     MERGE = sys.argv[6] == "True" or sys.argv[6] == "1"
     DEBUG = sys.argv[7] == "True" or sys.argv[7] == "1"
+    INSTALLATION_ID = sys.argv[8]
 
 logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO, format='[%(levelname)s][%(name)s] %(message)s')
 
+
 def _get_orgs(g):
-    for org in g.get_user().get_orgs():
-        try:
-            org.log = logging.getLogger("ORG")
-            if org.login == ORG or org.name == ORG:
+    org = g.get_organization(ORG)
+    try:
+        org.log = logging.getLogger("ORG")
+        for installation in org.get_installations():
+            if installation.id == int(INSTALLATION_ID):
                 yield org
             else:
-                org.log.debug(f"'{org.name}' was filtered out because it didn't match '{ORG}'")
-        except github.GithubException as e:
-            org.log.debug(f"No access to this org by SAML")
+                org.log.debug(f"'{installation.id}' was filtered out because it didn't match '{INSTALLATION_ID}'")
+    except github.GithubException:
+        org.log.debug(f"No access to this org by SAML")
 
 
 def _get_org_repos(org):
@@ -55,14 +58,17 @@ def _get_org_repos(org):
         except github.GithubException as e:
             org.log.error("This token has not been given permissions to access these repos")
 
+
 def _put_pull_attrs(pull):
     pull.log = logging.getLogger("PULL")
     pull.real_url = pull.url.replace('api.', '').replace('repos/', '').replace('pulls', 'pull')
+
 
 def _refresh_pull(repo, pull):
     p = repo.get_pull(pull.number)
     _put_pull_attrs(p)
     return p
+
 
 def _get_repo_pulls(repo):
     for pull in repo.get_pulls(state="open"):
@@ -117,7 +123,7 @@ if __name__ == '__main__':
                     _review_pull(pull)
 
                 i = 0
-                while not pull.mergeable:
+                while not pull.mergeable or pull.mergeable_state == "blocked":
 
                     # refresh the object, as the mergability doesn't seem to update
                     pull.log.debug(f"{pull.real_url} - refreshing pull object")
