@@ -2,6 +2,7 @@ import logging
 import re
 import sys
 import time
+from actions_toolkit import core, github
 
 import github.GithubException
 from github import Github
@@ -9,13 +10,13 @@ from github import Github
 # make it possible to run these locally
 # Github token should be passed through as an arg.
 
-GIT_TOKEN = sys.argv[1]
-ORG = sys.argv[2]
-REPO_FILTER = sys.argv[3]
-LABEL = sys.argv[4]
-NO_LABEL = sys.argv[5]
-MERGE = sys.argv[6] == "True" or sys.argv[6] == "1"
-DEBUG = sys.argv[7] in ["True", "true", "1", "yes", "Yes"]
+GIT_TOKEN = core.get_input("github_token")
+ORG = core.get_input("organisation")
+REPO_FILTER = core.get_input("repo_filter")
+LABEL = core.get_input("label")
+NO_LABEL = core.get_input("no_label")
+MERGE = core.get_input("merge") in ["True", "true", "1", "yes", "Yes"]
+DEBUG = core.get_input("debug") in ["True", "true", "1", "yes", "Yes"]
 
 logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO, format='[%(levelname)s][%(name)s] %(message)s')
 logging.getLogger('github.Requester').setLevel(logging.WARNING)
