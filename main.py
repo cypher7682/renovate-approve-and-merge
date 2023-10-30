@@ -8,27 +8,14 @@ from github import Github
 
 # make it possible to run these locally
 # Github token should be passed through as an arg.
-try:
-    sys.argv[1]
-except IndexError:
-    # we are running locally, so put some defaults in to make it easier to run it
-    GIT_TOKEN = sys.argv[1]
-    ORG = sys.argv[2]
-    REPO_FILTER = "terraform"
-    LABEL = "rnvt-automerge"
-    NO_LABEL = "rnvt-no-merge"
-    MERGE = True
-    DEBUG = False
-    INSTALLATION_ID = 32430040
-else:
-    # We're not running locally
-    GIT_TOKEN = sys.argv[1]
-    ORG = sys.argv[2]
-    REPO_FILTER = sys.argv[3]
-    LABEL = sys.argv[4]
-    NO_LABEL = sys.argv[5]
-    MERGE = sys.argv[6] == "True" or sys.argv[6] == "1"
-    DEBUG = sys.argv[7] in ["True", "true", "1", "yes", "Yes"]
+
+GIT_TOKEN = sys.argv[1]
+ORG = sys.argv[2]
+REPO_FILTER = sys.argv[3]
+LABEL = sys.argv[4]
+NO_LABEL = sys.argv[5]
+MERGE = sys.argv[6] == "True" or sys.argv[6] == "1"
+DEBUG = sys.argv[7] in ["True", "true", "1", "yes", "Yes"]
 
 logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO, format='[%(levelname)s][%(name)s] %(message)s')
 logging.getLogger('github.Requester').setLevel(logging.WARNING)
