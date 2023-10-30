@@ -9,11 +9,11 @@ from github import Github
 # make it possible to run these locally
 # Github token should be passed through as an arg.
 try:
-    sys.argv[2]
+    sys.argv[1]
 except IndexError:
     # we are running locally, so put some defaults in to make it easier to run it
     GIT_TOKEN = sys.argv[1]
-    ORG = "sys.argv[2]"
+    ORG = sys.argv[2]
     REPO_FILTER = "terraform"
     LABEL = "rnvt-automerge"
     NO_LABEL = "rnvt-no-merge"
@@ -28,29 +28,20 @@ else:
     LABEL = sys.argv[4]
     NO_LABEL = sys.argv[5]
     MERGE = sys.argv[6] == "True" or sys.argv[6] == "1"
-    DEBUG = sys.argv[7] == "True" or sys.argv[7] == "1"
-    INSTALLATION_ID = sys.argv[8]
+    DEBUG = sys.argv[7] in ["True", "true", "1", "yes", "Yes"]
 
 logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO, format='[%(levelname)s][%(name)s] %(message)s')
+logging.getLogger('github.Requester').setLevel(logging.WARNING)
+logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
 
+def _get_org_repos(user, org):
+    for repo in user.get_user().get_repos():
+        repo.log = logging.getLogger("REPO")
 
-def _get_orgs(g):
-    org = g.get_organization(ORG)
-    try:
-        org.log = logging.getLogger("ORG")
-        for installation in org.get_installations():
-            if installation.id == int(INSTALLATION_ID):
-                yield org
-            else:
-                org.log.debug(f"'{installation.id}' was filtered out because it didn't match '{INSTALLATION_ID}'")
-    except github.GithubException:
-        org.log.debug(f"No access to this org by SAML")
-
-
-def _get_org_repos(org):
-    for repo in org.get_repos():
+        if repo.organization.login != org:
+            repo.log.debug(f"Skipping {repo.name} because it's not in {org}")
+            continue
         try:
-            repo.log = logging.getLogger("REPO")
             if re.search(REPO_FILTER, repo.name):
                 yield repo
             else:
@@ -103,47 +94,44 @@ def _merge_pull(pull):
         pull.log.error(f"Could not merge {pull.real_url}")
         return False
 
+def is_mergable(pull):
+    return pull.mergeable_state == "clean" and pull.mergeable
 
 if __name__ == '__main__':
     log = logging.getLogger("MAIN")
     g = Github(GIT_TOKEN)
-    log.debug("Fetching orgs")
 
-    for org in _get_orgs(g):
-        org.log.debug(f"Fetching repos in '{org.name}'")
-
-        for repo in _get_org_repos(org):
-            repo.log.debug(f"Fetching pulls for '{repo.name}'")
+    for repo in _get_org_repos(g, ORG):
+        if repo.organization.login != ORG:
+            continue
+        else:
+            log.debug(f"Fetching pulls for '{repo.name}'")
 
             for pull in _get_repo_pulls(repo):
-                pull.log.info(f"{pull.real_url} Found")
+                log.info(f"{pull.real_url} Found")
+                log.info(f"{pull.real_url} - Mergability State: {pull.mergeable_state}, {pull.mergeable}")
 
-                if not pull.mergeable:
-                    pull.log.info(f"{pull.real_url} is not mergable. Posting an approval to see if that fixes it.")
-                    _review_pull(pull)
+                if not is_mergable(pull):
+                    pull.log.info(f"{pull.real_url} - Not mergeable. Posting approval.")
+                    _refresh_pull(repo, pull)
 
                 i = 0
-                while not pull.mergeable or pull.mergeable_state == "blocked":
+
+                while i<10:
 
                     # refresh the object, as the mergability doesn't seem to update
                     pull.log.debug(f"{pull.real_url} - refreshing pull object")
                     pull = _refresh_pull(repo, pull)
 
-                    if not i:
-                        pull.log.warning(f"{pull.real_url} - Approval did not make mergable.")
-                    elif i < 10:
-                        pull.log.warning(f"{pull.real_url} - Back-off {i+1}s waiting for mergability")
-                    else:
-                        pull.log.error(f"{pull.real_url} - Could not make mergeable. State: '{pull.mergeable_state}', Mergable: '{pull.mergeable}'")
-                        issue = repo.get_issue(pull.number)
-                        issue.create_comment(
-                            f"Attempted to automerge this PR, but couldn't because it's in a merge state: \n `{pull.mergeable_state}`, and mergability: `{str(pull.mergeable)}`"
-                        )
+                    if is_mergable(pull):
+                        pull.log.info(f"{pull.real_url} - Mergable")
+                        _merge_pull(pull)
                         break
+
+                    if i:
+                        pull.log.warning(f"{pull.real_url} - Back-off {i+1}s waiting for mergability")
+
                     i += 1
                     time.sleep(i)
-
                 else:
-                    if MERGE:
-                        pull.log.info(f"{pull.real_url} Mergeability State: {pull.mergeable_state}, {pull.mergeable}")
-                        _merge_pull(pull)
+                    pull.log.error(f"{pull.real_url} - Could not merge after 10 attempts")
