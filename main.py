@@ -114,6 +114,7 @@ if __name__ == '__main__':
                         comment(pull, "This PR is not mergeable. Please rebase and try again.")
                         continue
                     pull.log.info(f"{pull.real_url} - Not mergeable. Posting approval.")
+                    review_pull(pull)
                     refresh_pull(repo, pull)
 
                 i = 0
